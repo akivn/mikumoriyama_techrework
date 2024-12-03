@@ -58,6 +58,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
         /// Now consider a slider - circle pattern where the circle is stacked along the path inside the slider.
         /// In this case, the lazy end position correctly estimates the true end position of the slider and provides the more natural movement path.
         /// </example>
+        public double ActualJumpDistance { get; private set; }
+        /// <summary>
+        /// Actual Jump Distance is the absolute distance between two objects. Different than LazyJumpDistance, this value is the actual spacing between objects.
+        /// </summary>
         public double MinimumJumpDistance { get; private set; }
 
         /// <summary>
@@ -227,7 +231,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 float dot = Vector2.Dot(v1, v2);
                 float det = v1.X * v2.Y - v1.Y * v2.X;
 
-                Angle = Math.Abs(Math.Atan2(det, dot));
+                ActualJumpDistance = Math.Pow(Math.Pow(v2.X, 2) + Math.Pow(v2.Y, 2), 0.5);
+                Angle = Math.Atan2(det, dot);
             }
         }
 

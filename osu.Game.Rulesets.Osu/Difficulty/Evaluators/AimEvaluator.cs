@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+﻿﻿﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -7,14 +7,15 @@ using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Objects;
 
+
 namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
 {
     public static class AimEvaluator
     {
         private const double wide_angle_multiplier = 1.5;
-        private const double acute_angle_multiplier = 1.95;
-        private const double slider_multiplier = 1.35;
-        private const double velocity_change_multiplier = 0.75;
+        private const double acute_angle_multiplier = 1.9;
+        private const double slider_multiplier = 1.5;
+        private const double velocity_change_multiplier = 1;
 
         /// <summary>
         /// Evaluates the difficulty of aiming the current object, based on:
@@ -64,6 +65,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             double acuteAngleBonus = 0;
             double sliderBonus = 0;
             double velocityChangeBonus = 0;
+            double angleDeviationBonus = 0;
+            double wiggleBonus = 0;
 
             double aimStrain = currVelocity; // Start strain with regular velocity.
 
@@ -74,15 +77,18 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                     double currAngle = osuCurrObj.Angle.Value;
                     double lastAngle = osuLastObj.Angle.Value;
                     double lastLastAngle = osuLastLastObj.Angle.Value;
+                    double angleMean = (currAngle + lastAngle + lastLastAngle) / 3;
 
                     // Rewarding angles, take the smaller velocity as base.
                     double angleBonus = Math.Min(currVelocity, prevVelocity);
 
                     wideAngleBonus = calcWideAngleBonus(currAngle);
                     acuteAngleBonus = calcAcuteAngleBonus(currAngle);
+                    angleDeviationBonus = calcAngleDeviationBonus(currAngle, lastAngle, lastLastAngle, angleMean) / Math.PI;
+                    wiggleBonus = calcWiggleBonus(currAngle, lastAngle, lastLastAngle);
 
                     if (DifficultyCalculationUtils.MillisecondsToBPM(osuCurrObj.StrainTime, 2) < 300) // Only buff deltaTime exceeding 300 bpm 1/2.
-                        acuteAngleBonus = 0;
+                        acuteAngleBonus = 0;    
                     else
                     {
                         acuteAngleBonus *= calcAcuteAngleBonus(lastAngle) // Multiply by previous angle, we don't want to buff unless this is a wiggle type pattern.
@@ -95,6 +101,15 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                     wideAngleBonus *= angleBonus * (1 - Math.Min(wideAngleBonus, Math.Pow(calcWideAngleBonus(lastAngle), 3)));
                     // Penalize acute angles if they're repeated, reducing the penalty as the lastLastAngle gets more obtuse.
                     acuteAngleBonus *= 0.5 + 0.5 * (1 - Math.Min(acuteAngleBonus, Math.Pow(calcAcuteAngleBonus(lastLastAngle), 3)));
+                    // Angle deviation bonus and Wiggle bonus rewards jumps with angle variance and speed change, impacting aim control, alternating and tech maps.
+                    angleDeviationBonus *= Math.Max(150 / Math.Max(osuCurrObj.StrainTime, 25) - 1, 0) // Buff starts at 200bpm 1/2s.
+                                        * (currVelocity != 0 ? Math.Abs(prevVelocity - currVelocity) / 2 * ((Math.PI - Math.Abs(currAngle)) / Math.PI) : 0); // Buff based on Velocity change and nerf if it is acute angle or overlap cheeses.
+                    wiggleBonus *= Math.Max(150 / Math.Max(osuCurrObj.StrainTime, 25) - 1, 0) // Buff starts at 200bpm 1/2s.
+                                * (osuCurrObj.LazyJumpDistance != 0 ? Math.Pow(1 + osuCurrObj.LazyJumpDistance / 75, 0.4) : 1) // Buff based on LazyJumpDistance.
+                                * (Math.Max((prevVelocity + 1) / (currVelocity + 1), (currVelocity + 1) / (prevVelocity + 1))) // Buff based on velocity change (Burning Star).
+                                * Math.Sin(Math.Abs(Math.Abs(currAngle) - Math.Abs(lastAngle))) // Preventing streams from overbuffing
+                                * (Math.Sin(currAngle / 2) + 0.5); // Buffing wiggles properly (acute angles are nerfed to compensate with Crystalia)
+
                 }
             }
 
@@ -119,21 +134,25 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             if (osuLastObj.BaseObject is Slider)
             {
                 // Reward sliders based on velocity.
-                sliderBonus = osuLastObj.TravelDistance / osuLastObj.TravelTime;
+                sliderBonus = Math.Min(osuLastObj.TravelDistance / osuLastObj.TravelTime, 2);
             }
 
             // Add in acute angle bonus or wide angle bonus + velocity change bonus, whichever is larger.
-            aimStrain += Math.Max(acuteAngleBonus * acute_angle_multiplier, wideAngleBonus * wide_angle_multiplier + velocityChangeBonus * velocity_change_multiplier);
+            aimStrain += Math.Max(acuteAngleBonus * acute_angle_multiplier, wideAngleBonus * wide_angle_multiplier + velocityChangeBonus * velocity_change_multiplier) * (angleDeviationBonus + wiggleBonus + 1);
 
-            // Add in additional slider velocity bonus.
+            // Add in additional slider velocity bonus, accounting for slider aim timing (strain - travel).
             if (withSliderTravelDistance)
-                aimStrain += sliderBonus * slider_multiplier;
-
+                aimStrain += Math.Pow(sliderBonus * 1.5, 1.5) * Math.Min(1 / ((osuCurrObj.StrainTime - osuCurrObj.TravelTime) / 100), 1.5) * slider_multiplier;
+            aimStrain = Math.Abs(aimStrain);
+            if (aimStrain > 4)
+                aimStrain = 3 + Math.Pow(aimStrain - 3, 0.9);
             return aimStrain;
         }
 
-        private static double calcWideAngleBonus(double angle) => Math.Pow(Math.Sin(3.0 / 4 * (Math.Min(5.0 / 6 * Math.PI, Math.Max(Math.PI / 6, angle)) - Math.PI / 6)), 2);
+        private static double calcWideAngleBonus(double angle) => Math.Pow(Math.Sin(3.0 / 4 * (Math.Min(5.0 / 6 * Math.PI, Math.Max(Math.PI / 6, Math.Abs(angle))) - Math.PI / 6)), 2);
 
-        private static double calcAcuteAngleBonus(double angle) => 1 - calcWideAngleBonus(angle);
+        private static double calcAcuteAngleBonus(double angle) => 1 - calcWideAngleBonus(Math.Abs(angle));
+        private static double calcAngleDeviationBonus(double angle1, double angle2, double angle3, double meanAngle) => Math.Pow((Math.Pow(angle1 - meanAngle, 2) + Math.Pow(angle2 - meanAngle, 2) + Math.Pow(angle3 - meanAngle, 2)) / 3, 0.5);
+        private static double calcWiggleBonus(double angle1, double angle2, double angle3) => Math.Cos((Math.Abs(angle3 - angle2) + Math.Abs(angle1 - angle2)) / 4);
     }
 }
