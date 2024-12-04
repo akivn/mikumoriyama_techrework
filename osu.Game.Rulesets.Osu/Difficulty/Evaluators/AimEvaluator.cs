@@ -1,4 +1,4 @@
-﻿﻿﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+﻿﻿﻿﻿﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -103,12 +103,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                     acuteAngleBonus *= 0.5 + 0.5 * (1 - Math.Min(acuteAngleBonus, Math.Pow(calcAcuteAngleBonus(lastLastAngle), 3)));
                     // Angle deviation bonus and Wiggle bonus rewards jumps with angle variance and speed change, impacting aim control, alternating and tech maps.
                     angleDeviationBonus *= Math.Max(150 / Math.Max(osuCurrObj.StrainTime, 25) - 1, 0) // Buff starts at 200bpm 1/2s.
-                                        * (currVelocity != 0 ? Math.Abs(prevVelocity - currVelocity) / 2 * ((Math.PI - Math.Abs(currAngle)) / Math.PI) : 0); // Buff based on Velocity change and nerf if it is acute angle or overlap cheeses.
+                                        * (currVelocity != 0 ? ((Math.PI - Math.Abs(currAngle)) / Math.PI) : 0); // Buff based on Velocity change and nerf if it is obtuse angle or overlap cheeses.
                     wiggleBonus *= Math.Max(150 / Math.Max(osuCurrObj.StrainTime, 25) - 1, 0) // Buff starts at 200bpm 1/2s.
-                                * (osuCurrObj.LazyJumpDistance != 0 ? Math.Pow(1 + osuCurrObj.LazyJumpDistance / 75, 0.4) : 1) // Buff based on LazyJumpDistance.
-                                * (Math.Max((prevVelocity + 1) / (currVelocity + 1), (currVelocity + 1) / (prevVelocity + 1))) // Buff based on velocity change (Burning Star).
-                                * Math.Sin(Math.Abs(Math.Abs(currAngle) - Math.Abs(lastAngle))) // Preventing streams from overbuffing
-                                * (Math.Sin(currAngle / 2) + 0.5); // Buffing wiggles properly (acute angles are nerfed to compensate with Crystalia)
+                                * Math.Pow(1 + osuCurrObj.LazyJumpDistance / 75, 0.4) // Buff based on LazyJumpDistance.
+                                * (Math.Max((prevVelocity + 0.7) / (currVelocity + 0.7), (currVelocity + 0.7) / (prevVelocity + 0.7))) * Math.Min(Math.Pow(Math.Min(prevVelocity, currVelocity), 2), 1) * scalingFactor // Buff based on velocity change (Burning Star).
+                                * Math.Sin(Math.Max(Math.Abs(currAngle - lastAngle), Math.Abs(lastAngle - currAngle)) / 2) // Preventing streams from overbuffing
+                                * (osuCurrObj.LazyJumpDistance != 0 ? Math.Pow(Math.Sin(Math.Abs(currAngle) / 2), 0.5) : 0); // Buffing wiggles properly (acute angles are nerfed to compensate with Crystalia)
 
                 }
             }
@@ -134,18 +134,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             if (osuLastObj.BaseObject is Slider)
             {
                 // Reward sliders based on velocity.
-                sliderBonus = Math.Min(osuLastObj.TravelDistance / osuLastObj.TravelTime, 2);
+                sliderBonus = Math.Min(osuLastObj.TravelDistance / osuLastObj.TravelTime, 1.3);
             }
 
             // Add in acute angle bonus or wide angle bonus + velocity change bonus, whichever is larger.
-            aimStrain += Math.Max(acuteAngleBonus * acute_angle_multiplier, wideAngleBonus * wide_angle_multiplier + velocityChangeBonus * velocity_change_multiplier) * (angleDeviationBonus + wiggleBonus + 1);
+            aimStrain += Math.Max(acuteAngleBonus * acute_angle_multiplier, wideAngleBonus * wide_angle_multiplier + velocityChangeBonus * velocity_change_multiplier) * (angleDeviationBonus * 1.7 + wiggleBonus + 0.9);
 
             // Add in additional slider velocity bonus, accounting for slider aim timing (strain - travel).
             if (withSliderTravelDistance)
-                aimStrain += Math.Pow(sliderBonus * 1.5, 1.5) * Math.Min(1 / ((osuCurrObj.StrainTime - osuCurrObj.TravelTime) / 100), 1.5) * slider_multiplier;
+                aimStrain += Math.Pow(sliderBonus * 1.3, 1.5) * Math.Pow(100 / (osuCurrObj.StrainTime - osuLastObj.TravelTime), 0.5) * slider_multiplier;
             aimStrain = Math.Abs(aimStrain);
-            if (aimStrain > 4)
-                aimStrain = 3 + Math.Pow(aimStrain - 3, 0.9);
             return aimStrain;
         }
 
