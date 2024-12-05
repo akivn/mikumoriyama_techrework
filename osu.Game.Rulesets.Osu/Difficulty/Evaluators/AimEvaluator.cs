@@ -103,12 +103,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                     acuteAngleBonus *= 0.5 + 0.5 * (1 - Math.Min(acuteAngleBonus, Math.Pow(calcAcuteAngleBonus(lastLastAngle), 3)));
                     // Angle deviation bonus and Wiggle bonus rewards jumps with angle variance and speed change, impacting aim control, alternating and tech maps.
                     angleDeviationBonus *= Math.Max(150 / Math.Max(osuCurrObj.StrainTime, 25) - 1, 0) // Buff starts at 200bpm 1/2s.
-                                        * (currVelocity != 0 ? ((Math.PI - Math.Abs(currAngle)) / Math.PI) : 0); // Buff based on Velocity change and nerf if it is obtuse angle or overlap cheeses.
+                                        * (currVelocity != 0 ? ((Math.PI - Math.Abs(currAngle)) / Math.PI) : 0); // Buff based on angles or overlap cheeses.
                     wiggleBonus *= Math.Max(150 / Math.Max(osuCurrObj.StrainTime, 62.5) - 1, 0) // Buff starts at 200bpm 1/2s and caps at 240bpm 1/4s.
-                                * Math.Min(1 + osuCurrObj.LazyJumpDistance / 120, 2) // Buff based on LazyJumpDistance.
-                                * ((Math.Max((prevVelocity + 0.7) / (currVelocity + 0.7), (currVelocity + 0.7) / (prevVelocity + 0.7))) - 0.95) * Math.Min(Math.Pow(Math.Min(prevVelocity, currVelocity), 3), 1) // Buff based on velocity change and initial velocity, capping at 1o!px/ms (Burning Star).
-                                * Math.Pow(Math.Sin(Math.Max(Math.Abs(currAngle - lastAngle), Math.Abs(lastAngle - currAngle))), 4) // Preventing streams from overbuffing
-                                * (osuCurrObj.LazyJumpDistance != 0 ? Math.Pow(Math.Sin(Math.Abs(currAngle) / 2), 2) : 0); // Buffing wiggles properly (acute angles are nerfed to compensate with Crystalia)
+                                * Math.Min(1 + osuCurrObj.LazyJumpDistance / 120, 2) // Buff based on LazyJumpDistance. This part caps at 2x at 120o!px.
+                                * ((Math.Max((prevVelocity + 0.7) / (currVelocity + 0.7), (currVelocity + 0.7) / (prevVelocity + 0.7))) - 0.95) * Math.Min(Math.Pow(Math.Min(prevVelocity, currVelocity), 3), 1) // Buff based on velocity change factor and initial velocity, capping at 1o!px/ms.
+                                * Math.Pow(Math.Sin(Math.Max(Math.Abs(currAngle - lastAngle), Math.Abs(lastAngle - currAngle))), 4) // Preventing streams from overbuffing due to this formula also buff straight streams.
+                                * (osuCurrObj.LazyJumpDistance != 0 ? Math.Pow(Math.Sin(Math.Abs(currAngle) / 2), 2) : 0); // Buffing wiggles properly.
 
                 }
             }
@@ -146,7 +146,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                 wiggleBonus *= Math.Pow(0.4, aimStrain + currVelocity - 3.75);
             }
 
-            // Multiply the bonus by Angle Deviation bonus and Wiggle Bonus.
+            // Multiply acute / wide angle bonus by Angle Deviation bonus and Wiggle Bonus.
             aimStrain *= angleDeviationBonus + wiggleBonus * 10 + 1;
 
             // Add in additional slider velocity bonus, accounting for slider aim timing (strain - travel).
